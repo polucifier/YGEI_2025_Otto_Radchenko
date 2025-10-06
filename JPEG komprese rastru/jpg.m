@@ -11,9 +11,9 @@ R = double(fig(:,:,1));
 G = double(fig(:,:,2));
 B = double(fig(:,:,3));
 
-%
+%%%%%%%%%%%%%%%%%%%%%%%%%
 %JPEG compression
-%
+%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %convert RGB to YCbCr
 Y = 0.2990*R + 0.5870*G + 0.1140*B;
@@ -40,6 +40,11 @@ Qc = [17 18 24 47 66 99 99 99
 99 99 99 99 99 99 99 99
 99 99 99 99 99 99 99 99];
 
+%Compression factor
+q = 50;
+Qyf = 50*Qy/q;
+Qcf = 50*Qc/q;
+
 %store components
 Y_old = Y;
 Cb_old = Cb;
@@ -61,11 +66,6 @@ for i = 1:8:m-7
         Ys_dct = dct(Ys);
         Cbs_dct = dct(Cbs);
         Crs_dct = dct(Crs);
-        
-        %Compression factor
-        q = 50;
-        Qyf = 50*Qy/q;
-        Qcf = 50*Qc/q;
 
         %Quantization - 1. ztratovy krok
         Ys_q = round(Ys_dct ./ Qyf);
@@ -83,14 +83,62 @@ end
 %JPEG decompression
 %%%%%%%%%%%%%%%%%%%%%%%%%
 
-%Dequantization
+%Process lines
+for i = 1:8:m-7
+    %Process columns
+    for j = 1:8:n-7
+        %Get submatrices
+        Ys = Y(i:i+7, j:j+7);
+        Cbs = Cb(i:i+7, j:j+7);
+        Crs = Cr(i:i+7, j:j+7);
 
-%IDCT
+        %Dequantization
+        Ys_dq = Ys .* Qyf;
+        Cbs_dq = Cbs .* Qcf;
+        Crs_dq = Crs .* Qcf;
+
+        %Apply IDCT
+        Ys_idct = idct(Ys_dq);
+        Cbs_idct = idct(Cbs_dq);
+        Crs_idct = idct(Crs_dq);
+
+        %Update transformed matrix
+        Y(i:i+7,j:j+7) = Ys_idct;
+        Cb(i:i+7,j:j+7) = Cbs_idct;
+        Cr(i:i+7,j:j+7) = Crs_idct;
+    end
+end
 
 %YCbCr -> RGB
+Rd = Y + 1.4020*(Cr-128);
+Gd = Y - 0.3441*(Cb-128) - 0.7141*(Cr-128);
+Bd = Y + 1.7720*(Cb-128) - 0.0001*(Cr-128);
+
+%Convert double to uint8
+Ri=uint8(Rd);
+Gi=uint8(Gd);
+Bi=uint8(Bd);
+
+%Assemble RGB image
+imgj(:,:,1)=Ri;
+imgj(:,:,2)=Gi;
+imgj(:,:,3)=Bi;
+
+%Show compressed image
+imshow(imgj);
 
 %Standard deviations for RGB components
+dR = Rd - R;
+dG = Gd - G;
+dB = Bd - B;
 
+R2 = dR.^2;
+G2 = dG.^2;
+B2 = dB.^2;
+
+sigmaR = sqrt(sum(R2(:))/(m*n))
+sigmaG = sqrt(sum(G2(:))/(m*n))
+sigmaB = sqrt(sum(B2(:))/(m*n))
 
 function [imgt] = dct(img)
 
@@ -101,9 +149,9 @@ for u = 0:7
 
     %compute cu
     if (u == 0)
-        cu = 2^(0.5)/2
+        cu = 2^(0.5)/2;
     else
-        cu = 1
+        cu = 1;
     end
 
     %Process columns
@@ -111,23 +159,60 @@ for u = 0:7
 
         %compute cv
         if (v == 0)
-            cv = 2^(0.5)/2
+            cv = 2^(0.5)/2;
         else
-            cv = 1
+            cv = 1;
         end
 
         %Process lines
-        fuv = 0
+        fuv = 0;
         for x = 0:7
             %Process columns
             for y = 0:7
-
-                fuv = fuv+1/4+0.25*cu*cv*img(x+1,y+1)*...
-                    cos((2*(x+1)+1)*u*pi/16)*cos((2*(y+1)+1)*v*pi/16);
+                fuv = fuv+0.25*cu*cv*img(x+1,y+1)*...
+                    cos((2*x+1)*u*pi/16)*cos((2*y+1)*v*pi/16);
             end
         end
         %Update raster
-        imgt(u+1,v+1)=fuv
+        imgt(u+1,v+1)=fuv;
+    end
+end
+end
+
+function [imgt] = idct(img)
+
+imgt = img;
+
+%Process lines
+for x = 0:7
+
+    %Process columns
+    for y = 0:7
+
+        %Process lines
+        fuv = 0;
+        for u = 0:7
+            %compute cu
+            if (u == 0)
+                cu = 2^(0.5)/2;
+            else
+                cu = 1;
+            end
+
+            %Process columns
+            for v = 0:7
+                %compute cv
+                if (v == 0)
+                    cv = 2^(0.5)/2;
+                else
+                    cv = 1;
+                end
+                fuv = fuv+0.25*cu*cv*img(u+1,v+1)*...
+                    cos((2*x+1)*u*pi/16)*cos((2*y+1)*v*pi/16);
+            end
+        end
+        %Update raster
+        imgt(x+1,y+1)=fuv;
     end
 end
 end
