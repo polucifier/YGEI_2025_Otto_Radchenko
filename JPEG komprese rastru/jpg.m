@@ -20,6 +20,15 @@ Y = 0.2990*R + 0.5870*G + 0.1140*B;
 Cb = -0.1687*R - 0.3313*G + 0.5000*B + 128;
 Cr = 0.5000*R - 0.4187*G - 0.0813*B + 128;
 
+%Interval transformation
+Y = 2*Y - 255;
+Cb = 2*Cb - 255;
+Cr = 2*Cr - 255;
+
+%Raster resampling - pouze pro barevné složky - 1. ztratovy krok
+Cb = resample_chrominance_2x2(Cb);
+Cr = resample_chrominance_2x2(Cr);
+
 %Quantisation matrix: Y
 Qy = [16 11 10 16 24 40 51 61;
 12 12 14 19 26 58 60 55;
@@ -45,13 +54,8 @@ q = 50;
 Qyf = 50*Qy/q;
 Qcf = 50*Qc/q;
 
-%store components
-Y_old = Y;
-Cb_old = Cb;
-Cr_old = Cr;
-
 %division to submatrices
-[m,n] = size(Y_old);
+[m,n] = size(Y);
 
 %Process lines
 for i = 1:8:m-7
@@ -67,7 +71,7 @@ for i = 1:8:m-7
         Cbs_dct = dct(Cbs);
         Crs_dct = dct(Crs);
 
-        %Quantization - 1. ztratovy krok
+        %Quantization - 2. ztratovy krok
         Ys_q = round(Ys_dct ./ Qyf);
         Cbs_q = round(Cbs_dct ./ Qcf);
         Crs_q = round(Crs_dct ./ Qcf);
@@ -109,6 +113,11 @@ for i = 1:8:m-7
     end
 end
 
+%Interval transformation
+Y = (Y + 255)/2;
+Cb = (Cb + 255)/2;
+Cr = (Cr + 255)/2;
+
 %YCbCr -> RGB
 Rd = Y + 1.4020*(Cr-128);
 Gd = Y - 0.3441*(Cb-128) - 0.7141*(Cr-128);
@@ -125,12 +134,12 @@ imgj(:,:,2)=Gi;
 imgj(:,:,3)=Bi;
 
 %Show compressed image
-imshow(imgj);
+figure, imshow(imgj);
 
 %Standard deviations for RGB components
-dR = Rd - R;
-dG = Gd - G;
-dB = Bd - B;
+dR = R - Rd;
+dG = G - Gd;
+dB = B - Bd;
 
 R2 = dR.^2;
 G2 = dG.^2;
@@ -139,6 +148,10 @@ B2 = dB.^2;
 sigmaR = sqrt(sum(R2(:))/(m*n))
 sigmaG = sqrt(sum(G2(:))/(m*n))
 sigmaB = sqrt(sum(B2(:))/(m*n))
+
+%%%%%%%%%%%%%%%%%%%%%%%%%
+%Functions
+%%%%%%%%%%%%%%%%%%%%%%%%%
 
 function [imgt] = dct(img)
 
@@ -215,4 +228,18 @@ for x = 0:7
         imgt(x+1,y+1)=fuv;
     end
 end
+end
+
+function C_resampled = resample_chrominance_2x2(C)
+    [m, n] = size(C);
+    % Připravíme výslednou matici
+    C_resampled = zeros(m, n);
+    
+    % Projdeme políčka 2x2 a spočítáme průměr
+    for i = 1:2:m-1
+        for j = 1:2:n-1
+            block = C(i:i+1, j:j+1);
+            C_resampled(i:i+1, j:j+1) = mean(block(:));
+        end
+    end
 end
