@@ -83,10 +83,15 @@ for i = 1:8:m-7
     end
 end
 
-%%%%%%%%%%%%%%%%%%%%%%%%%
-%JPEG decompression
-%%%%%%%%%%%%%%%%%%%%%%%%%
+%Codebook generation
+codebookY = huffman_codebook(Y(:));
+codebookCb = huffman_codebook(Cb(:));
+codebookCr = huffman_codebook(Cr(:));
 
+%Zig-Zag + Huffman coding
+Ys_encoded = {};
+Cbs_encoded = {};
+Crs_encoded = {};
 %Process lines
 for i = 1:8:m-7
     %Process columns
@@ -95,6 +100,38 @@ for i = 1:8:m-7
         Ys = Y(i:i+7, j:j+7);
         Cbs = Cb(i:i+7, j:j+7);
         Crs = Cr(i:i+7, j:j+7);
+
+        %Convertion to ZIG-ZAG sequence
+        Ys_zigzag = zigzag(Ys);
+        Cbs_zigzag = zigzag(Cbs);
+        Crs_zigzag = zigzag(Crs);
+
+        %Huffman encoding
+        Ys_encoded{end+1} = huffman_encode(Ys_zigzag,codebookY);
+        Cbs_encoded{end+1} = huffman_encode(Cbs_zigzag,codebookCb);
+        Crs_encoded{end+1} = huffman_encode(Crs_zigzag,codebookCr);
+    end
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%
+%JPEG decompression
+%%%%%%%%%%%%%%%%%%%%%%%%%
+
+k = 1; % index for encoded data
+%Process lines
+for i = 1:8:m-7
+    %Process columns
+    for j = 1:8:n-7
+        %Huffman decoding
+        Ys_zigzag = huffman_decode(Ys_encoded{k},codebookY);
+        Cbs_zigzag = huffman_decode(Cbs_encoded{k},codebookCb);
+        Crs_zigzag = huffman_decode(Crs_encoded{k},codebookCr);
+        k = k + 1;
+
+        %Convertion from ZIG-ZAG sequence to matrix
+        Ys = inverse_zigzag(Ys_zigzag);
+        Cbs = inverse_zigzag(Cbs_zigzag);
+        Crs = inverse_zigzag(Crs_zigzag);
 
         %Dequantization
         Ys_dq = Ys .* Qyf;
@@ -240,6 +277,152 @@ function C_resampled = resample_chrominance_2x2(C)
         for j = 1:2:n-1
             block = C(i:i+1, j:j+1);
             C_resampled(i:i+1, j:j+1) = mean(block(:));
+        end
+    end
+end
+
+function Z = zigzag(M)
+    [rows, cols] = size(M);
+    Z = zeros(1, rows * cols);
+    index = 1;
+    
+    for s = 0:(rows + cols - 2)
+        if mod(s, 2) == 0
+            % Odd sum index: traverse from top-right to bottom-left
+            for j = max(0, s - rows + 1):min(s, cols - 1)
+                i = s - j;
+                if i < rows
+                    Z(index) = M(i + 1, j + 1);
+                    index = index + 1;
+                end
+            end
+        else
+            % Even sum index: traverse from bottom-left to top-right
+            for i = max(0, s - cols + 1):min(s, rows - 1)
+                j = s - i;
+                if j < cols
+                    Z(index) = M(i + 1, j + 1);
+                    index = index + 1;
+                end
+            end
+        end
+    end
+end
+
+function M = inverse_zigzag(Z)
+    n = sqrt(length(Z));
+    M = zeros(n, n);
+    index = 1;
+    
+    for s = 0:(n + n - 2)
+        if mod(s, 2) == 0
+            % Odd sum index: traverse from top-right to bottom-left
+            for j = max(0, s - n + 1):min(s, n - 1)
+                i = s - j;
+                if i < n
+                    M(i + 1, j + 1) = Z(index);
+                    index = index + 1;
+                end
+            end
+        else
+            % Even sum index: traverse from bottom-left to top-right
+            for i = max(0, s - n + 1):min(s, n - 1)
+                j = s - i;
+                if j < n
+                    M(i + 1, j + 1) = Z(index);
+                    index = index + 1;
+                end
+            end
+        end
+    end
+end
+
+function codebook = huffman_codebook(data)
+    % Vstup: data - vektor celých čísel (symbolů)
+    % Výstup: codebook - struktura se symboly a kódy
+    
+    % Najdi unikátní symboly a jejich četnosti
+    symbols = unique(data);
+    counts = zeros(size(symbols));
+    for i = 1:length(symbols)
+        counts(i) = sum(data == symbols(i));
+    end
+
+    % Vytvoř základní uzly pro každý symbol
+    nodes = struct('symbol', num2cell(symbols), ...
+                   'count', num2cell(counts), ...
+                   'left', [], ...
+                   'right', [], ...
+                   'parent', []);
+
+    % Seznam uzlů, které nejsou sloučeny
+    active = num2cell(1:length(nodes));
+    tree = nodes;
+    
+    % Rekurentní spojování uzlů
+    while length(active) > 1
+        % Najdi dva uzly s nejmenší četností
+        counts_active = [tree([active{:}]).count];
+        [~, idx] = sort(counts_active);
+        a = active{idx(1)};
+        b = active{idx(2)};
+        
+        % Slouč do nového "rodiče" (předka)
+        newnode.symbol = [];
+        newnode.count = tree(a).count + tree(b).count;
+        newnode.left = a;
+        newnode.right = b;
+        newnode.parent = [];
+        tree(end+1) = newnode;
+        
+        % Nastav rodiče původním uzlům
+        tree(a).parent = length(tree);
+        tree(b).parent = length(tree);
+
+        % Aktualizuj aktivní seznam
+        active([idx(1) idx(2)]) = [];
+        active{end+1} = length(tree);
+    end
+
+    % Projeď strom zpět a přidej kódy
+    codebook = struct('symbol', {}, 'code', {});
+    function traverse(node_idx, code)
+        if isempty(tree(node_idx).left) && isempty(tree(node_idx).right)
+            codebook(end+1).symbol = tree(node_idx).symbol;
+            codebook(end).code = code;
+        else
+            traverse(tree(node_idx).left, [code, '1']);
+            traverse(tree(node_idx).right, [code, '0']);
+        end
+    end
+
+    traverse(length(tree), '');
+end
+
+function encoded = huffman_encode(data, codebook)
+    encoded = ''; % Výsledný binární řetězec ve formě stringu
+    for i = 1:length(data)
+        idx = find([codebook.symbol] == data(i), 1); % Najdi index odpovídajícího symbolu v codebooku
+        encoded = [encoded codebook(idx).code]; % Připoj kód k výstupnímu binárnímu řetězci
+    end
+end
+
+function decoded = huffman_decode(encoded, codebook)
+    decoded = []; % Výstupní vektor dekomprimovaných symbolů
+    idx = 1; % Aktuální pozice v binárním řetězci
+    while idx <= length(encoded)
+        found = false;
+        % Procházej všechny položky v codebooku a hledej odpovídající prefix
+        for i = 1:length(codebook)
+            L = length(codebook(i).code);
+            % Porovnej aktuální úsek kódu se záznamem v codebooku
+            if idx+L-1 <= length(encoded) && strcmp(encoded(idx:idx+L-1), codebook(i).code)
+                % Pokud odpovídá, přidej symbol do výsledku
+                decoded(end+1) = codebook(i).symbol;
+                idx = idx + L; % Pokračuj za tento úsek
+                found = true;
+                break;
+            end
         end
     end
 end
