@@ -397,6 +397,10 @@ function codebook = huffman_codebook(data)
     end
 
     traverse(length(tree), '');
+
+    if isempty(codebook(1).code)
+        codebook(1).code = '1';
+    end
 end
 
 function encoded = huffman_encode(data, codebook)
