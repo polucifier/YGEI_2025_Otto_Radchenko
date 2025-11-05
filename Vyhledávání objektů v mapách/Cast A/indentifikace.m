@@ -31,13 +31,13 @@ imshow(smallSubImage(:,:,3), []);
 axis on;
 title('Vzor 1')
 
-% Pokus o viacero vzorov
+% Multiple examples
 smallSubImage2 = imcrop(rgbImage, [6884, 5096, templateWidth, templateHeight]);
 smallSubImage3 = imcrop(rgbImage, [4273, 3750, templateWidth, templateHeight]);
 smallSubImage4 = imcrop(rgbImage, [5444, 4401, templateWidth, templateHeight]);
 smallSubImage5 = imcrop(rgbImage, [7122, 4673, templateWidth, templateHeight]);
 
-% prumer vzor
+% Example mean
 templateAll = cat(4,smallSubImage, smallSubImage2, smallSubImage3, smallSubImage4, smallSubImage5);
 meanTemplate = mean(templateAll,4);
 smallSubImage = meanTemplate;
@@ -82,6 +82,7 @@ imshow(correlationOutput, []);
 axis on;
 title('Normaovany korelacni koeficient')
 
+% Ammount of correlation
 korelace = 0.575;
 
 [yk,xk] = size(correlationOutput);
@@ -114,5 +115,6 @@ for i=1:pocet
     rectangle("position",boxRect, 'edgecolor','g','linewidth',2);
 end
 title("Nalezeno " + num2str(pocet) + " vysledku v obrazu")
+
 
 vysledky
