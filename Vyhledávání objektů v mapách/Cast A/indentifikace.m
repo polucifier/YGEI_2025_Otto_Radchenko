@@ -10,7 +10,7 @@ file = "MMC_sk1.jpg"
 
 rgbImage = imread(file);
 rgbImage = double(rgbImage);
-rgbImage = rgbImage/256;
+rgbImage = rgbImage/255;
 
 [rows, columns, numberOfColorBands] = size(rgbImage);
 
