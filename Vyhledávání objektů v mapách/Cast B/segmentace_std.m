@@ -24,17 +24,13 @@ nhood = ones(9, 9);
 % popisuje lokalni "hrubost" textury v danem miste
 stdFeatures = stdfilt(L_channel, nhood);
 
-% prejmenovani promenne pro kompatibilitu se zbytkem skriptu
-% (neni nutne, ale je to cistsi)
-gaborMag = stdFeatures;
-
 %% krok 2.2 - priprava dat pro imsegkmeans() ///////////////////////
 % ziskame pouze barevne kanaly a* a b*
 abChannels = labImage(:,:,2:3);
 
 % spojime 2 barevne kanaly (a*, b*) s 1 kanalem textury (std)
 % vysledkem je matice m x n x 3 (3 priznaky pro kazdy pixel)
-allFeatures = cat(3, abChannels, gaborMag);
+allFeatures = cat(3, abChannels, stdFeatures);
 
 % kanaly a*b* a std kanal maji ruzne rozsahy hodnot
 % pro spravnou funkci k-means je treba priznaky normalizovat (standardizovat)
