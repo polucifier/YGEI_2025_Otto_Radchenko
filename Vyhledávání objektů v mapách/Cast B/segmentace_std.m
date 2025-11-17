@@ -126,13 +126,19 @@ title('finalni maska lesa (po vyplneni der)');
 vysledneSouradnice = [rows, cols];
 
 % vypiseme si prvnich 10
-%disp(vysledneSouradnice(1:10,:));
+disp(vysledneSouradnice(1:10,:));
 
+%% --- Krok 7 - oriznuti a ulozeni //////////////////////////////////
+x_min = 362;
+x_max = 4560;
+y_min = 465;
+y_max = 4840;
 % vytvoreni prekryvneho obrazku pro vizualni kontrolu
 overlay = labeloverlay(imread("TM25_sk1.jpg"), finalMask, "Colormap",[0,1,0],"Transparency",0.7);
-
+overlay = overlay(y_min:y_max, x_min:x_max, :);
 % ulozeni prekryvneho obrazku
 imwrite(overlay,'overlay.jpg');
 
 % ulozeni finalni binarni masky
+finalMask = finalMask(y_min:y_max, x_min:x_max);
 imwrite(finalMask, 'maska_std.png');
