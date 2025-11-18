@@ -1,0 +1,385 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ZÁKLADNÍ NASTAVENÍ DOKUMENTU
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[a4paper, 12pt]{article}
+
+% Balíčky pro kódování a češtinu
+\usepackage[utf8]{inputenc} % Správné kódování (UTF-8)
+\usepackage[T1]{fontenc}    % Moderní kódování fontů
+\usepackage[czech]{babel}   % České dělení slov a názvy (Obsah, Kapitola...)
+
+% Geometrie stránky (okraje)
+\usepackage[a4paper, margin=2.5cm]{geometry}
+
+% Matematické symboly (pro L*a*b* a šipku)
+\usepackage{amsmath}
+\usepackage{amssymb} % Pro \to
+
+% Balíček pro odstavce bez odsazení a s mezerou mezi nimi
+\usepackage{parskip}
+
+% Balíček pro formátování kódu (MATLAB a Python)
+\usepackage{listings}
+\usepackage{xcolor} % Pro barvy (např. rámečku kódu)
+
+\usepackage{graphicx}   % Pro vkládání obrázků
+\usepackage{subcaption} % Pro obrázky vedle sebe s podpopisky (a), (b)
+
+% Definice šedé barvy pro rámeček
+\definecolor{framegray}{rgb}{0.8,0.8,0.8}
+
+% Nastavení stylu pro 'listings'
+\lstset{
+    basicstyle=\ttfamily,        % Použití neproporcionálního písma
+    frame=tb,                    % Rámeček pouze nahoře (top) a dole (bottom)
+    rulesepcolor=\color{framegray}, % Barva čáry rámečku
+    framerule=0.5pt,             % Tloušťka čáry
+    numbers=none,                % Bez číslování řádků
+    breaklines=true,             % Automatické lámání dlouhých řádků
+    keepspaces=true,             % Zachovat mezery
+    showstringspaces=false,      % Nezobrazovat speciální znaky pro mezery v řetězcích
+    keywordstyle=\color{blue},   % Barva klíčových slov (pokud by byla definována)
+    stringstyle=\color{purple},  % Barva řetězců (pokud by byla definována)
+    commentstyle=\color{gray},    % Barva komentářů (pokud by byla definována)
+}
+
+% Pro správné vkládání názvů souborů s podtržítky
+% \texttt{} se postará o správné písmo a zobrazení podtržítka
+\newcommand{\filename}[1]{\texttt{#1}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ZAČÁTEK DOKUMENTU
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{document}
+
+\section*{Část B}
+
+Část B úlohy byla řešena v rámci dvou skriptů: \filename{segmentace\_std.m} řeší základní úlohu a bonusovou úlohu s využitím STD filtru, pak \filename{GeoPackageUTM.py} řeší druhou bonusovou úlohu související s exportem výsledné masky do GeoPackage.
+
+\subsection*{Popis skriptu \filename{segmentace\_std.m}}
+
+Tento skript provádí kompletní proces segmentace lesních ploch z topografické mapy, od přípravy dat až po finální čištění masky a její export. Pro analýzu textury byla nejprve zvažována banka Gaborových filtrů (4 směry, 3 frekvence). Tento přístup by však spolu s barevnými kanály vytvořil 14 příznaků pro \texttt{imsegkmeans()}, což se ukázalo jako výpočetně náročné a vedlo k nežádoucímu přesegmentování. Proto byla pro finální řešení zvolena efektivnější filtrace pomocí standardní odchylky \texttt{stdfilt()}, která texturu lesa popsala jediným robustním příznakem.
+
+% --- Krok 1 ---
+\subsubsection*{Krok 1: Načtení a převod barev}
+
+\paragraph{Kód:}
+\noindent
+\noindent
+\begin{lstlisting}[language=Matlab]
+labImage = rgb2lab(imread("TM25_sk1.jpg"));
+\end{lstlisting}
+
+\paragraph{Popis:}
+Nejprve se načte zdrojový obrázek mapy (\filename{TM25\_sk1.jpg}). Okamžitě se převádí z barevného prostoru RGB do $L^*a^*b^*$.
+
+\paragraph{Důvod:}
+Prostor $L^*a^*b^*$ je pro segmentaci mnohem vhodnější, protože odděluje světlost ($L^*$) od barevných složek ($a^*$, $b^*$). To nám umožňuje analyzovat texturu nezávisle na barvě a barvu nezávisle na světlosti.
+
+% --- Krok 2.1 ---
+\subsubsection*{Krok 2.1: Příprava STD filtru}
+
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Matlab]
+L_channel = labImage(:,:,1);
+a_channel = labImage(:,:,2);
+stdFeatures = stdfilt(L_channel, nhood);
+\end{lstlisting}
+
+\paragraph{Popis:}
+Tento krok připravuje „příznaky“ (features) pro segmentaci.
+Ze $L^*a^*b^*$ obrázku se izoluje kanál $L^*$ (světlost) a kanál $a^*$ (zelená-červená). Kanál $a^*$ se uloží pro pozdější identifikaci lesa (který je zelený).
+Na kanál $L^*$ se aplikuje filtr standardní odchylky (\texttt{stdfilt}) s okolím 9x9 pixelů (\texttt{nhood}).
+
+\paragraph{Důvod:}
+STD filtr je klíčový pro splnění bonusové části. Vytvoří nový obrázek, kde vysoké hodnoty znamenají vysokou lokální variabilitu (hrubou texturu, např. tečkovaný les) a nízké hodnoty znamenají hladkou plochu (pole, louky).
+
+% --- Krok 2.2 ---
+\subsubsection*{Krok 2.2: Příprava dat pro \texttt{imsegkmeans()}}
+
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Matlab]
+allFeatures = cat(3, abChannels, gaborMag);
+features_scaled = zscore(features_2d);
+\end{lstlisting}
+
+\paragraph{Popis:}
+Zde se připraví finální data pro segmentační algoritmus.
+Vytvoří se "balík" příznaků spojením dvou barevných kanálů ($a^*$, $b^*$) a jednoho texturového kanálu \texttt{stdFeatures}. Výsledkem je 3-kanálový obrázek, kde má každý pixel tři vlastnosti: barvu ($a^*$, $b^*$) a texturu (std).
+Protože tyto tři kanály mají různé rozsahy hodnot, je nutné je normalizovat. Funkce \texttt{zscore} standardizuje každý příznak tak, aby měl průměr 0 a směrodatnou odchylku 1. Tím je zajištěno, že algoritmus k-Means dává všem příznakům stejnou váhu.
+Je nastaven počet clusterů $k = 2$ (Les a Ne-les).
+
+% --- Krok 3 ---
+\subsubsection*{Krok 3: Segmentace}
+
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Matlab]
+pixelLabels = imsegkmeans(features_scaled_3d, k, ...);
+\end{lstlisting}
+
+\paragraph{Popis:}
+Na normalizovaných, třípásmových datech (barva + textura) se spustí algoritmus k-Means.
+
+\paragraph{Výsledek:}
+Vznikne obrázek \texttt{pixelLabels}, kde má každý pixel přiřazené číslo (1 nebo 2) podle toho, do kterého clusteru byl zařazen.
+
+% --- Krok 4 ---
+\subsubsection*{Krok 4: Identifikace clusteru a maska}
+
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Matlab]
+for i=1:k
+    clusterMeans(i) = mean(a_channel(pixelLabels==i));
+end
+[~, idLesa] = min(clusterMeans);
+forestMask = (pixelLabels==idLesa);
+\end{lstlisting}
+
+\paragraph{Popis:}
+Tento krok zjišťuje, který cluster (1 nebo 2) představuje les.
+Vypočítá se průměrná hodnota $a^*$ kanálu pro oba clustery.
+Cluster s nejnižší (nejvíce zápornou) průměrnou hodnotou $a^*$ je identifikován jako les (protože $a^*$ kanál kóduje zelenou barvu).
+Vytvoří se binární maska (\texttt{forestMask}), která má hodnotu 1 (true) pro všechny pixely patřící do clusteru lesa a 0 (false) pro všechny ostatní.
+
+% --- Krok 5.1 ---
+\subsubsection*{Krok 5.1: Čištění šumu a tenkých čar}
+
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Matlab]
+cleanMask = bwareaopen(forestMask, 100);
+cleanMask = imopen(cleanMask, strel('disk',4));
+\end{lstlisting}
+
+\paragraph{Popis:}
+Toto je první fáze čištění masky od zbytkové kresby.
+\texttt{bwareaopen(..., 100)}: Odstraní všechny malé bílé objekty (šum) menší než 100 pixelů.
+\texttt{imopen(..., strel('disk',4))}: Provede morfologickou operaci "otevření". Ta se skládá z eroze následované dilatací. Tento krok efektivně odstraní tenké čáry (cesty, silnice), které by mohly být součástí masky.
+
+% --- Krok 5.2 ---
+\subsubsection*{Krok 5.2: Plnění děr (s výjimkou velkých)}
+
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Matlab]
+filledMask = imfill(cleanMask, 'holes');
+holes = filledMask & ~cleanMask;
+largeHoles = imopen(holes, strel('disk',13));
+finalMask = filledMask & ~largeHoles;
+\end{lstlisting}
+
+\paragraph{Popis:}
+Druhá, složitější fáze čištění, která má za cíl vyplnit díry po cestách a textech uvnitř lesa, ale zároveň zachovat průseky.
+\texttt{imfill(..., 'holes')}: Nejprve se vyplní všechny díry v masce.
+\texttt{holes = ...}: Vytvoří se pomocná maska, která obsahuje pouze ty díry, které byly v předchozím kroku vyplněny.
+\texttt{largeHoles = imopen(...)}: Na masce děr se provede morfologické otevření. To odstraní malé a tenké díry (původní cesty a texty), ale zachová velké a kompaktní díry (průseky).
+\texttt{finalMask = filledMask \& \textasciitilde largeHoles}: Finální maska vznikne tak, že se z kompletně vyplněné masky (\texttt{filledMask}) „odečtou“ pouze ty velké díry (\texttt{largeHoles}).
+
+% --- Krok 6 ---
+\subsubsection*{Krok 6: Export pixelových souřadnic}
+
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Matlab]
+[rows, cols] = find(finalMask);
+vysledneSouradnice = [rows, cols];
+\end{lstlisting}
+
+\paragraph{Popis:}
+Ačkoliv finálním výstupem pro Python skript je rastrový \texttt{.png} soubor, tento krok plní původní požadavek zadání (,,Výsledek odevzdejte jako pole pixelových souřadnic'').
+Funkce \texttt{find(finalMask)} najde všechny nenulové (bílé) pixely v \texttt{finalMask} a vrátí jejich řádkové (\texttt{rows}) a sloupcové (\texttt{cols}) indexy.
+Tyto dva vektory jsou spojeny do jedné N $\times$~ 2 matice \texttt{vysledneSouradnice}, která představuje požadované pole pixelových souřadnic lesa.
+
+% --- Krok 7 ---
+\subsubsection*{Krok 7: Oříznutí a uložení}
+
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Matlab]
+finalMask = finalMask(y_min:y_max, x_min:x_max);
+imwrite(finalMask, 'maska_std.png');
+\end{lstlisting}
+
+\paragraph{Popis:}
+Jsou definovány souřadnice ořezového boxu ($x_{min}$, $y_{min}$, $x_{max}$, $y_{max}$).
+Finální binární maska (\texttt{finalMask}) je oříznuta na definovanou oblast zájmu.
+Výsledná oříznutá maska je uložena jako soubor \filename{maska\_std\_cropped.png}. Tento soubor (obsahující pixely 0 a 1) slouží jako vstup pro navazující Python skript \filename{GeoPackageUTM.py}.
+
+\begin{figure}[p!]
+    \centering
+    % Můžete si upravit šířku, např. 0.8\textwidth je 80% šířky textu
+    \includegraphics[width=1\textwidth]{maska_std_cropped.png} 
+    \caption{Výsledná binární maska lesa}
+    \label{fig:maska}
+\end{figure}
+
+\begin{figure}[p!]
+    \centering
+    % Můžete si upravit šířku, např. 0.8\textwidth je 80% šířky textu
+    \includegraphics[width=1\textwidth]{overlay_cropped.jpg} 
+    \caption{Překryv masky nad původní mapou}
+    \label{fig:overlay}
+\end{figure}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ZDE ZAČÍNÁ 2. ČÁST
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection*{Popis skriptu \filename{GeoPackageUTM.py}}
+
+Tento skript navazuje na \filename{segmentace\_std.m}. Jeho úkolem je vzít surovou binární masku (\filename{maska\_std\_cropped.png}), provést její georeferencování, přeprojektovat ji do systému UTM a uložit výsledek jako finální vektorovou vrstvu ve formátu GeoPackage.
+Pro finální transformaci do systému UTM byly porovnány dvě metody: vektorová transformace \texttt{geopandas.to\_crs()} a rastrová reprojekce \texttt{rasterio.reproject()}. Vizuální kontrola nad ortofoto podklady ukázala, že metoda \texttt{geopandas.to\_crs()} zavedla do dat systematický posun o velikosti přibližně 10 metrů. Z tohoto důvodu byla pro finální pipeline zvolena metoda \texttt{rasterio.reproject()}, jejíž výstup přesně lícoval s podkladovými mapami.
+\subsubsection*{Část 1: Nastavení a georeference}
+
+Tato část nastavuje všechny potřebné parametry a provádí první georeferenční výpočty.
+
+\paragraph{Krok 1.1: Definice \texttt{control\_points}, souborů a CRS}
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Python]
+control_points = [...]
+\end{lstlisting}
+\paragraph{Popis:}
+Toto je klíčový seznam 5 identických bodů (GCP). Každý bod obsahuje pár souřadnic:
+\begin{itemize}
+    \item Pixelové souřadnice (\texttt{pixel\_x}, \texttt{pixel\_y}) odečtené ze souboru \filename{maska\_std\_cropped.png}.
+    \item Souřadnice v systému S1942 (\texttt{s1942\_x}, \texttt{s1942\_y}) odečtené z mřížky na původní topografické mapě (např. 3457000, 5595000).
+\end{itemize}
+
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Python]
+INPUT_RASTER_RAW
+OUTPUT_GPKG
+TARGET_CRS_S42
+TARGET_CRS_UTM
+\end{lstlisting}
+\paragraph{Popis:}
+Jsou nastaveny cesty k vstupnímu \filename{.png} a výstupnímu \filename{.gpkg}. \texttt{TARGET\_CRS\_S42} (EPSG:28403) je CRS, který používáme pro georeferencování. \texttt{TARGET\_CRS\_UTM} (EPSG:32633) je náš finální systém.
+
+\paragraph{Krok 1.2: Výpočet transformace}
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Python]
+new_transform_S42 = from_gcps(gcps)
+\end{lstlisting}
+\paragraph{Popis:}
+Body \texttt{control\_points} jsou převedeny do formátu \texttt{GroundControlPoint}, který knihovna Rasterio vyžaduje. Funkce \texttt{from\_gcps} z nich vypočítá afinní transformační matici (\texttt{new\_transform\_S42}). Tato matice matematicky popisuje vztah mezi pixely a S-42 souřadnicemi.
+
+\paragraph{Krok 1.3: Načtení dat}
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Python]
+with rasterio.open(INPUT_RASTER_RAW) as src:
+    data = src.read(1)
+\end{lstlisting}
+\paragraph{Popis:}
+Je otevřen vstupní soubor \filename{maska\_std\_cropped.png}. Protože \filename{.png} není georeferencovaný, je potlačeno varování \texttt{NotGeoreferencedWarning}. Pomocí \texttt{src.read(1)} jsou načtena surová pixelová data (pole hodnot 0 a 1) z prvního pásma do proměnné \texttt{data}.
+
+\subsubsection*{Část 2: Reprojekce (S1942 $\to$ UTM)}
+
+Toto je klíčová část skriptu, která provádí transformaci dat pomocí metod Rasterio.
+
+\paragraph{Krok 2.1: Výpočet cílových parametrů}
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Python]
+dst_transform, dst_width, dst_height = calculate_default_transform(...)
+\end{lstlisting}
+\paragraph{Popis:}
+Abychom mohli data přeprojektovat, musíme definovat „plátno“ v cílovém systému UTM. Tato funkce vypočítá novou transformační matici (\texttt{dst\_transform}) a nové rozměry (\texttt{dst\_width}, \texttt{dst\_height}) pro rastr v UTM tak, aby přesně pokryl původní oblast.
+
+\paragraph{Krok 2.2: Příprava prázdného pole}
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Python]
+destination_array = np.empty(...)
+\end{lstlisting}
+\paragraph{Popis:}
+V paměti je vytvořeno nové, prázdné numpy pole (\texttt{destination\_array}) s rozměry vypočítanými v předchozím kroku.
+
+\paragraph{Krok 2.3: Reprojekce}
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Python]
+reproject(...)
+\end{lstlisting}
+\paragraph{Popis:}
+Toto je jádro celého procesu. Funkce \texttt{reproject} vezme zdrojová data (\texttt{data}), zdrojovou transformaci (\texttt{new\_transform\_S42}) a zdrojový CRS (\texttt{TARGET\_CRS\_S42}) a „překreslí“ je do cílového pole (\texttt{destination\_array}) pomocí cílové transformace (\texttt{dst\_transform}) a CRS (\texttt{TARGET\_CRS\_UTM}).
+\texttt{Resampling.nearest} je zásadní, protože zajišťuje, že naše hodnoty 0 a 1 zůstanou zachovány a nebudou zprůměrovány (což by se stalo např. při \texttt{Resampling.bilinear}).
+
+\subsubsection*{Část 3: Polygonizace již v UTM}
+
+Nyní, když máme v paměti rastr, který je již správně přeprojektovaný do UTM, můžeme z něj vytvořit vektory.
+
+\paragraph{Krok 3.1: Vytvoření masky}
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Python]
+mask = (destination_array == 1)
+\end{lstlisting}
+\paragraph{Popis:}
+Vytvoří se jednoduchá booleanská maska, která vybírá pouze pixely lesa (s hodnotou 1).
+
+\paragraph{Krok 3.2: Polygonizace}
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Python]
+results = rasterio.features.shapes(...)
+\end{lstlisting}
+\paragraph{Popis:}
+Funkce \texttt{shapes} projde reprojektované pole \texttt{destination\_array} a „obkreslí“ všechny souvislé oblasti pixelů s hodnotou 1.
+Jelikož jako \texttt{transform} používáme \texttt{dst\_transform} (UTM transformaci), výsledné geometrie (polygony) jsou generovány rovnou v souřadnicích UTM.
+
+\subsubsection*{Část 4: Uložení do GeoPackage}
+
+Finální krok vezme polygony v UTM a uloží je.
+
+\paragraph{Krok 4.1: Kontrola a vytvoření GeoDataFrame}
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Python]
+gdf_utm = gpd.GeoDataFrame(...)
+\end{lstlisting}
+\paragraph{Popis:}
+Seznam polygonů je načten do GeoDataFrame.\newpage
+
+\paragraph{Krok 4.2: Uložení}
+\paragraph{Kód:}
+\noindent
+\begin{lstlisting}[language=Python]
+gdf_utm.to_file(OUTPUT_GPKG, driver='GPKG')
+\end{lstlisting}
+\paragraph{Popis:}
+Finální GeoDataFrame je uložen do souboru \filename{les\_final\_UTM.gpkg}. Tento soubor již obsahuje vektorové polygony lesa ve správném souřadnicovém systému UTM.
+
+\begin{figure}[h!]
+    \centering
+    % Můžete si upravit šířku, např. 0.8\textwidth je 80% šířky textu
+    \includegraphics[width=1\textwidth]{vysledek po importu do qgis.png} 
+    \caption{Výsledná vektorová vrstva lesa načtená v QGIS z GeoPackage}
+    \label{fig:gpkg}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    % Můžete si upravit šířku, např. 0.8\textwidth je 80% šířky textu
+    \includegraphics[width=1\textwidth]{kvalita.png} 
+    \caption{Finální ověření správnosti georeferencování. 
+             Vektorová vrstva
+             je překryta přes podkladový ortofoto snímek. 
+             Je patrné, že vypočtené hranice
+             lícují se skutečným lesním porostem, 
+             což potvrzuje úspěšnou reprojekci do systému UTM.}
+    \label{fig:overlay_kontrola}
+\end{figure}
+
+\end{document}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% KONEC DOKUMENTU
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
