@@ -107,7 +107,7 @@ features_scaled = zscore(features_2d);
 
 \paragraph{Popis:}
 Zde se připraví finální data pro segmentační algoritmus.
-Vytvoří se "balík" příznaků spojením dvou barevných kanálů ($a^*$, $b^*$) a jednoho texturového kanálu \texttt{stdFeatures}. Výsledkem je 3-kanálový obrázek, kde má každý pixel tři vlastnosti: barvu ($a^*$, $b^*$) a texturu (std).
+Vytvoří se „balík“ příznaků spojením dvou barevných kanálů ($a^*$, $b^*$) a jednoho texturového kanálu \texttt{stdFeatures}. Výsledkem je 3-kanálový obrázek, kde má každý pixel tři vlastnosti: barvu ($a^*$, $b^*$) a texturu (std).
 Protože tyto tři kanály mají různé rozsahy hodnot, je nutné je normalizovat. Funkce \texttt{zscore} standardizuje každý příznak tak, aby měl průměr 0 a směrodatnou odchylku 1. Tím je zajištěno, že algoritmus k-Means dává všem příznakům stejnou váhu.
 Je nastaven počet clusterů $k = 2$ (Les a Ne-les).
 
@@ -158,7 +158,7 @@ cleanMask = imopen(cleanMask, strel('disk',4));
 \paragraph{Popis:}
 Toto je první fáze čištění masky od zbytkové kresby.
 \texttt{bwareaopen(..., 100)}: Odstraní všechny malé bílé objekty (šum) menší než 100 pixelů.
-\texttt{imopen(..., strel('disk',4))}: Provede morfologickou operaci "otevření". Ta se skládá z eroze následované dilatací. Tento krok efektivně odstraní tenké čáry (cesty, silnice), které by mohly být součástí masky.
+\texttt{imopen(..., strel('disk',4))}: Provede morfologickou operaci „otevření“. Ta se skládá z eroze následované dilatací. Tento krok efektivně odstraní tenké čáry (cesty, silnice), které by mohly být součástí masky.
 
 % --- Krok 5.2 ---
 \subsubsection*{Krok 5.2: Plnění děr (s výjimkou velkých)}
