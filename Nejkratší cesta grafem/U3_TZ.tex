@@ -1,0 +1,201 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[czech]{babel}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{float} % Pro lepší pozicování obrázků [H]
+
+% Nastavení okrajů
+\geometry{
+ a4paper,
+ total={170mm,257mm},
+ left=20mm,
+ top=20mm,
+}
+
+% Nastavení vzhledu kódu
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+
+\lstset{style=mystyle}
+
+\title{\textbf{Technická zpráva: Nejkratší cesta grafem}}
+\author{Mykhailo Radchenko, Philip-Július Otto}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Úvod}
+Cílem této úlohy bylo implementovat algoritmy pro hledání nejkratších cest v grafu nad reálnými daty silniční sítě. Práce zahrnuje přípravu dat z OpenStreetMap, implementaci vlastních datových struktur a řešení optimalizačních úloh.
+
+Nad rámec základního zadání byly ve výsledném skriptu \texttt{U3\_final.py} úspěšně vyřešeny následující bonusové úlohy:
+\begin{itemize}
+    \item \textbf{Bonus 1:} Řešení úlohy pro grafy se záporným ohodnocením (Bellman-Fordův algoritmus).
+    \item \textbf{Bonus 2:} Nalezení nejkratších cest mezi všemi dvojicemi uzlů (Floyd-Warshallův algoritmus).
+    \item \textbf{Bonus 4, 5, 6:} Nalezení minimální kostry grafu Kruskalovým algoritmem (včetně heuristik \textit{Weighted Union} a \textit{Path Compression}).
+    \item \textbf{Bonus 3:} Nalezení minimální kostry grafu Jarníkovým-Primovým algoritmem.
+\end{itemize}
+
+\section{Technický popis implementace}
+Skript je napsán v jazyce Python a je rozdělen do logických bloků: definice vlastních tříd, implementace algoritmů a hlavní výkonná část.
+
+\subsection{Vlastní datové struktury}
+Pro účely výuky a optimalizace nebyly použity vestavěné knihovny pro prioritní fronty, ale byly implementovány vlastní třídy:
+
+\begin{itemize}
+    \item \textbf{Třída \texttt{MinHeap}:} Implementuje prioritní frontu pomocí pole. Obsahuje metody \texttt{push} (vložení a probublání nahoru \texttt{\_bubble\_up}) a \texttt{pop} (odebrání kořene a probublání dolů \texttt{\_bubble\_down}). Tato třída je využita v Dijkstrově a Primově algoritmu.
+    
+    \item \textbf{Třída \texttt{UnionFind}:} Implementuje strukturu Disjoint Set Union (DSU) pro Kruskalův algoritmus. Pro maximální efektivitu obsahuje obě požadované heuristiky:
+    \begin{itemize}
+        \item \textit{Path Compression} (komprese cesty): Při volání metody \texttt{find} se rekurzivně přepojují uzly přímo ke kořeni.
+        \item \textit{Weighted Union}: Při spojování (\texttt{union}) se menší strom vždy připojuje pod větší strom na základě \textit{ranku}.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Příprava a zpracování dat}
+Vstupní data jsou stahována pomocí knihovny \texttt{osmnx}.
+\begin{enumerate}
+    \item \textbf{Stažení:} Je stažena silniční síť typu \texttt{drive} pro oblast „Jihomoravský kraj“.
+    \item \textbf{Projekce:} Graf je transformován ze souřadnic WGS84 (stupně) do UTM (metry) pomocí \texttt{ox.project\_graph}, což umožňuje přesné výpočty vzdáleností.
+    \item \textbf{Topologie:} Graf je převeden na neorientovaný (\texttt{to\_undirected}).
+\end{enumerate}
+
+\section{Hlavní úloha: Dijkstrův algoritmus}
+Algoritmus \texttt{dijkstra\_algorithm} využívá naši třídu \texttt{MinHeap}. Na vstupu přijímá graf, startovní a cílový uzel a atribut váhy.
+
+\subsection{Metriky ohodnocení}
+Pro každou hranu jsou vypočteny tři různé váhy:
+\begin{itemize}
+    \item \textbf{Eukleidovská vzdálenost} (\texttt{weight\_euclid}): Fyzická délka silnice v metrech.
+    \item \textbf{Teoretický čas} (\texttt{weight\_time1}): Délka dělená maximální povolenou rychlostí (dle typu silnice, např. dálnice 130 km/h, obec 50 km/h).
+    \item \textbf{Čas s vlivem klikatosti} (\texttt{weight\_time2}): Rychlost je penalizována faktorem klikatosti $f = \frac{l(P)}{dist(u,v)}$. Skutečná rychlost je $v_{real} = v_{max} / f$.
+\end{itemize}
+
+\subsection{Výsledky testování}
+Testování proběhlo na dvou trasách. Výsledky porovnání našich algoritmů s reálnými daty (Google Maps) jsou uvedeny v tabulce níže.
+
+\begin{table}[H]
+\centering
+\caption{Výsledky Dijkstrova algoritmu a porovnání s realitou}
+\label{tab:dijkstra}
+\begin{tabular}{|l|l|c|c|}
+\hline
+\textbf{Trasa} & \textbf{Metrika} & \textbf{Vypočtená hodnota} & \textbf{Google Maps} \\ \hline
+\textbf{Brno $\to$ Znojmo} & Vzdálenost & 65,71 km & 66,9 km \\ 
+ & Čas (Teoretický) & 41,3 min & - \\ 
+ & Čas (Klikatost) & 42,0 min & 47 min \\ \hline
+\textbf{Vyškov $\to$ Blansko} & Vzdálenost & 34,58 km & 34,6 km \\ 
+ & Čas (Teoretický) & 23,3 min & - \\ 
+ & Čas (Klikatost) & 24,5 min & 38 min \\ \hline
+\end{tabular}
+\end{table}
+
+Jak je vidět, zavedení penalizace za klikatost mírně prodloužilo dojezdový čas, což přibližuje model realitě, ačkoliv absence dopravních dat (křižovatky, provoz) stále činí výsledek optimističtějším.
+
+\begin{figure}[H]
+    \centering
+    % Zde doplňte název souboru, pokud se liší
+    \includegraphics[width=0.8\textwidth]{mapa_Brno_Znojmo_weight_euclid.png}
+    \caption{Vizualizace trasy Brno - Znojmo (nejkratší Eukleidovská vzdálenost)}
+    \label{fig:brno_znojmo}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    % Zde doplňte název souboru, pokud se liší
+    \includegraphics[width=0.8\textwidth]{mapa_Brno_Znojmo_weight_time2.png}
+    \caption{Vizualizace trasy Brno - Znojmo (nejrychlejší cesta s vlivem klikatosti)}
+    \label{fig:brno_znojmo}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{mapa_Vyškov_Blansko_weight_time2.png}
+    \caption{Vizualizace trasy Vyškov - Blansko}
+    \label{fig:vyskov_blansko}
+\end{figure}
+
+\section{Implementace bonusových úloh}
+
+\subsection{Bonus 1: Bellman-Fordův algoritmus}
+Tato část demonstruje hledání cesty v grafu se záporným ohodnocením.
+\begin{itemize}
+    \item \textbf{Implementace:} Funkce \texttt{bellman\_ford\_algorithm} provádí $|V|-1$ relaxací hran a následně detekuje záporné cykly.
+    \item \textbf{Testovací scénář:} Byl vytvořen malý podgraf (okolí centra Brna, 1 km), ve kterém byla uměle vytvořena hrana se zápornou váhou (-60 sekund). Algoritmus úspěšně nalezl cestu s časem 0,24 min.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{mapa_bonus_bellman.png}
+    \caption{Výsledek Bellman-Fordova algoritmu na modifikovaném podgrafu}
+    \label{fig:bellman}
+\end{figure}
+
+\subsection{Bonus 2: Floyd-Warshallův algoritmus}
+Cílem bylo nalézt matici nejkratších cest mezi všemi dvojicemi uzlů. Algoritmus využívá dynamické programování na principu: $d_{ij} = \min(d_{ij}, d_{ik} + d_{kj})$.
+
+\begin{itemize}
+    \item \textbf{Optimalizace:} Vzhledem ke kubické složitosti $O(V^3)$ nebylo možné spustit výpočet na celém grafu (37 tisíc uzlů). Byla provedena extrakce \textbf{páteřní sítě} (pouze dálnice a silnice I. třídy), čímž se počet uzlů zredukoval na 722.
+    \item \textbf{Výsledek:} Na redukovaném grafu proběhl výpočet za přibližně 5 sekund. Byla vygenerována kompletní matice vzdáleností.
+    \item \textbf{Verifikace:} Z výsledné matice byla pro kontrolu vybrána cesta mezi dvěma vzdálenými uzly v síti. Hodnota \textbf{80,66 min} odpovídá reálnému času přejezdu napříč Jihomoravským krajem po silnicích I. třídy, což potvrzuje korektnost výpočtu.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{mapa_skeleton_network.png}
+    \caption{Vizualizace extrahované páteřní sítě (G\_fw)}
+    \label{fig:skeleton}
+\end{figure}
+
+\subsection{Bonus 3 a 4: Minimální kostra grafu (MST)}
+Pro demonstraci algoritmů hledání minimální kostry byla vytvořena hustší síť než v předchozím kroku. K páteřní síti byly přidány i silnice II. a III. třídy (\texttt{secondary}, \texttt{tertiary}). Tím vznikl graf s větším množstvím cyklů, na kterém lze lépe demonstrovat schopnost algoritmů eliminovat nadbytečné hrany a ponechat pouze nezbytné spojení.
+
+\begin{enumerate}
+    \item \textbf{Kruskalův algoritmus:}
+    Využívá třídění hran podle váhy a vlastní strukturu \texttt{UnionFind}. Postupně spojuje komponenty, dokud nevznikne jeden strom.
+    
+    \item \textbf{Jarníkův-Primův algoritmus:}
+    Využívá vlastní \texttt{MinHeap}. Začíná v náhodném uzlu a postupně připojuje nejbližší sousedy.
+\end{enumerate}
+
+\textbf{Ověření:} Oba algoritmy dospěly ke zcela identické celkové délce kostry, což potvrzuje správnost obou implementací. Vizuálně je kostra řidší než vstupní síť, protože neobsahuje žádné uzavřené okruhy.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{mapa_bonus_kruskal_mst.png}
+    \caption{Vizualizace minimální kostry grafu (Kruskalův algoritmus)}
+    \label{fig:mst}
+\end{figure}
+
+\section{Závěr}
+Všechny části zadání včetně čtyř bonusových úloh byly splněny. Skript je plně funkční, využívá vlastní efektivní datové struktury (Heap, Union-Find) a automaticky generuje požadované výstupy a vizualizace.
+
+\end{document}
